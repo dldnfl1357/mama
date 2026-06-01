@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: mama
+  config:
+    import: "optional:file:./.env[.properties]"
+  datasource:
+    url: "jdbc:sqlite:${SQLITE_PATH:./data/mama.db}"
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate.format_sql: true
+    open-in-view: false
+
+mama:
+  kis:
+    app-key: ${KIS_APP_KEY:}
+    app-secret: ${KIS_APP_SECRET:}
+    account-no: ${KIS_ACCOUNT_NO:}
+    paper-trading: ${KIS_PAPER_TRADING:true}
+    base-url: https://openapi.koreainvestment.com:9443
+    paper-base-url: https://openapivts.koreainvestment.com:29443
+  dart:
+    api-key: ${DART_API_KEY:}
+    base-url: https://opendart.fss.or.kr/api
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-haiku-4-5-20251001
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.serveone.mama: DEBUG

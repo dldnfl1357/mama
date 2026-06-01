@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: "jdbc:sqlite::memory:"
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: create-drop
+
+mama:
+  kis:
+    app-key: test-app-key
+    app-secret: test-app-secret
+    account-no: 00000000-00
+    paper-trading: true
+    base-url: https://openapi.koreainvestment.com:9443
+    paper-base-url: https://openapivts.koreainvestment.com:29443
+  dart:
+    api-key: test-dart-key
+    base-url: https://opendart.fss.or.kr/api
+  anthropic:
+    api-key: test-anthropic-key
+    model: claude-haiku-4-5-20251001
