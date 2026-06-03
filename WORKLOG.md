@@ -92,28 +92,15 @@
 
 **잡힌 함정:** YAML에서 `jdbc:sqlite::memory:`는 연속 콜론 때문에 파싱 실패. **DataSource URL은 따옴표로 감싸야 함.**
 
-### 모노레포 → 단일 리포
+### 단일 리포로 정리
 
-처음엔 모노레포로 시도:
-1. 모든 backend 파일 `backend/`로 이동 → CLAUDE.md 아키텍처·빌드 섹션 갱신.
-2. 사용자가 별도로 `frontend/` (React + Vite) 생성·커밋.
-
-이후 사용자 결정: **"backend와 frontend는 별개 프로젝트"**.
+처음엔 모노레포로 시도(`backend/`를 하위 폴더로). 이후 사용자 결정: **backend는 독립 프로젝트로 분리**. 다른 영역(웹/모바일/인프라 등)은 별도 리포에서 관리되며 **이 워크스페이스에서는 다루지 않는다.**
 
 → 구조 재정리:
 - `backend/`에 `git init` (자체 워크스페이스).
 - `origin = https://github.com/dldnfl1357/mama.git`.
 - **Force-push로 이전 히스토리 폐기** (`e2b84b0`, `26d0781` → 새 root commit `c017589`).
 - 부모 `/Users/woori/projects/mama/.git` 제거.
-- `frontend/`는 별도 리포(`mama-site` 등)로 분리 예정 — 현재 ungoverned.
-
-**결과 레이아웃:**
-
-```
-/Users/woori/projects/mama/   ← 그냥 폴더
-├── backend/                   ← git workspace (origin: mama.git)
-└── frontend/                  ← 별도 프로젝트 (git 없음)
-```
 
 ### CLAUDE.md 갱신
 
@@ -122,7 +109,6 @@
 
 ### 보류 / 미해결
 
-- **`frontend/` 분리**: 별도 리포(`mama-site` 등) 발행 + 초기 커밋 필요.
 - **GitHub PAT 폐기**: 사용자 미확인. 채팅에 노출된 두 토큰 즉시 revoke 필요.
 - **첫 영속 엔티티**: `DisclosureEntity` + `DisclosureRepository`. W1 닫고 W2 시작 전에 처리할지, 끼워서 갈지 결정 필요.
 - **JAVA_HOME 영구화**: `~/.zshrc` 추가 미수행. 매 세션 export 필요.
@@ -131,7 +117,141 @@
 
 1. **W2 시작: LLM 분석 레이어** — `llm/` 패키지 + Anthropic Java SDK + 프롬프트.
 2. **W1 마무리** — `DisclosureEntity` + `DisclosureRepository`로 공시 영속화.
-3. **`frontend/` 분리** — 별도 리포 정리.
+
+---
+
+## 2026-06-03 — W1 마무리 (공시 영속화) + 스코프 정리
+
+### 스코프 정리
+
+사용자 지시: **이 워크스페이스(`backend/`)에서는 frontend·다른 영역을 일절 고려하지 않는다.** CLAUDE.md §2 아키텍처에서 "모노레포" 표현 제거, "독립 Spring Boot 프로젝트"로 재정의. WORKLOG의 다음 후보에서도 frontend 분리 항목 제거. 메모리에도 `feedback_backend_scope`로 영구화.
+
+### W1 영속화
+
+- `dart/entity/DisclosureEntity` — `@Entity`, PK = `rceptNo`(String), `of(item, fetchedAt)` 정적 팩토리. `rceptDt`는 `LocalDate`로 정규화(검색 편의), `stockCode`/`rm`의 빈 문자열은 `null`로 정규화(비상장사 처리). `fetchedAt`은 수집 시각 추적용 컬럼 1개 추가.
+- `dart/DisclosureRepository` — `JpaRepository<DisclosureEntity, String>`. 추가 조회 메서드는 W2에서 필요할 때만.
+- `dart/DisclosureIngestService` — `@Service` + `@Transactional`. `DartClient.fetchDisclosures` → `saveAll` 단순 결합. 응답 `status != "000"`이면 `DartIngestException` 던지고 저장 스킵.
+- `Clock` 빈을 `MamaApplication`에 등록 — `Instant.now(clock)`로 테스트에서 시각 고정 가능.
+
+### 의도적 단순화
+
+- **중복 제거 로직 없음.** `rceptNo`가 PK라 `saveAll`은 UPSERT처럼 동작. 같은 공시 재수집 시 SELECT + UPDATE 발생하지만, 실제 노이즈가 보이기 전엔 `existsById`로 N+1을 만들지 않는다.
+- **자동 페이지네이션 없음.** 호출부가 `pageNo`/`pageCount` 직접 지정. W4 스케줄러에서 필요해지면 추가.
+- **트리거 없음.** 누가 `ingest()`를 호출할지(스케줄러? 컨트롤러?)는 W2/W4에서 결정.
+
+### 테스트
+
+- `DisclosureEntityTests` — 매핑 + blank 정규화.
+- `DisclosureRepositoryTests` — `@DataJpaTest` + `@AutoConfigureTestDatabase(replace = NONE)` (SQLite 유지). save/findById, 같은 PK 재저장 시 in-place 업데이트.
+- `DisclosureIngestServiceTests` — DartClient/Repository 모두 Mockito 모킹, `Clock.fixed`로 `fetchedAt` 결정성 확보. 에러 응답 시 throw + saveAll 미호출 검증.
+
+### 빌드 확인
+
+`cd backend && ./gradlew build` 통과 (13s, 8 tasks). 시동 로그에 `disclosure` 테이블 DDL 정상 생성 확인.
+
+### 보류 / 미해결
+
+- **GitHub PAT 폐기**: 이전 세션부터 계속 미확인.
+- **JAVA_HOME 영구화**: 여전히 매 세션 export 필요.
+- **`ingest()` 호출 주체**: 다음 단계에서 W4(스케줄러) 또는 임시 CLI/HTTP 트리거 결정 필요.
+
+### 다음 후보
+
+1. **W2 시작: LLM 분석 레이어** — 영속화된 공시를 입력으로 받아 신호로 변환.
+
+---
+
+## 2026-06-04 — W2 (LLM 분석 레이어)
+
+### 결정
+
+- **SDK vs RestClient**: `RestClient` 직접 (DartClient와 동일 패턴, 의존성 0, mock 단순). Anthropic Java SDK는 아직 베타·기능 한정적이라 컨벤션 깨면서 채택할 가치 없음.
+- **Signal 스키마**: 최소형 `(ticker, action(BUY/SELL/HOLD), confidence 0~1, reasoning)`. 영속화는 일단 보류 — 신호 생성 자체가 작동하는지부터 측정.
+- **호출 단위**: 공시 1건 → LLM 1콜. 배치는 W4 스케줄러에서 필요해지면.
+- **출력 강제**: tool use / JSON mode 미사용. 프롬프트로 JSON 강제 + 견고한 파서(첫 `{`/마지막 `}` 추출 + 실패 시 HOLD fallback)로 처리. tool use는 W4 단계에서 신뢰성 데이터 모은 뒤 결정.
+
+### 파일
+
+- `llm/MessagesRequest`, `llm/MessagesResponse` — Anthropic messages API 스키마 (snake_case via `@JsonNaming`). 응답은 `@JsonIgnoreProperties(ignoreUnknown=true)` — Anthropic이 필드 추가해도 안 깨지게.
+- `llm/ClaudeClient` — `@Component`. `complete(system, user, maxTokens) → String`. URL/version 상수, `x-api-key`·`anthropic-version` 헤더, 사용량 로깅, text block 합쳐서 반환. 빈 응답 / non-text only → `ClaudeClientException`.
+- `signal/Action` (enum), `signal/Signal` (record).
+- `signal/SignalGenerator` — `@Service`. 시스템 프롬프트(한국 주식 1~5일 스윙 분석가), 사용자 프롬프트(공시 필드 fill-in). 파싱 실패·미지 action·confidence 범위 초과는 HOLD로 안전하게 흡수. `stockCode` 없는 공시는 `IllegalArgumentException` — 비상장사는 호출부 책임으로 사전 필터.
+
+### 의도적 미구현
+
+- **Signal 영속화**: 신호 출력 안정화 전엔 DB 스키마 박는 게 부담. 우선 로깅으로 측정.
+- **재시도 / rate limit 백오프**: 실제 429/529 빈도 보고 추가.
+- **프롬프트 캐싱**: messages API의 `cache_control`은 시스템 프롬프트가 안정화된 후 도입 (현재는 매번 같은 system 보내지만 캐시 안 함 — 비용 영향 미미한 MVP 단계).
+- **`signal` → `dart` 의존**: `SignalGenerator.generate(DisclosureItem)` — 상류(dart)를 직접 받는다. 의존성 방향(dart ← signal)은 정상 (signal이 dart 위에 얹힘). 나중에 어색하면 projection record로 추출.
+
+### 테스트 (10개 추가)
+
+- `ClaudeClientTests` — `MockRestServiceServer`로 요청 헤더·body JSON 경로 검증. content blocks 합산, 빈 content / non-text only 시 예외.
+- `SignalGeneratorTests` — Mockito로 ClaudeClient mock. 깨끗한 JSON, 마크다운 코드펜스 안의 JSON, confidence clamp, 미지 action(HOLD fallback), 완전 파싱 실패(HOLD fallback), 프롬프트가 공시 필드를 포함하는지, stockCode 없으면 거절.
+
+### 빌드
+
+`./gradlew build` 통과 (6s, 전체 18개 테스트).
+
+### 보류 / 다음
+
+- **`ingest → generate → ?` 파이프라인**: 현재 W2 출력은 메서드 반환값으로만 존재. 어디서 호출할지(W4 스케줄러? 임시 CLI?) 결정 필요.
+- **실호출 검증**: 모두 모킹. 실제 Anthropic API에 한 번 쏘는 smoke 테스트 (수동) 시점 결정 필요.
+
+### 다음 후보
+
+1. **W3 시작: KIS 클라이언트** — OAuth 토큰 발급 + 모의투자 주문 어댑터.
+2. **파이프라인 결합** — 임시 CLI 또는 `@Scheduled`로 ingest → generate 연결, 실API 1회 스모크.
+3. **Signal 영속화** — 출력이 안정화됐다 판단되면 `SignalEntity` + Repository 추가.
+
+---
+
+## 2026-06-04 — W3 (KIS 클라이언트 + executor)
+
+### 결정
+
+- **시장가 주문만 구현.** Signal에 가격 필드가 없고 가격 결정 로직도 없음. 지정가는 가격 결정 로직 생기면 추가.
+- **시세/잔고/포지션 조회 미구현.** 현재 신호엔 포지션 인지 없음. W4에서 필요하면.
+- **토큰 캐싱은 메모리.** KIS 토큰 발급 빈도 제한이 있으나 MVP 프로세스 재시작 빈도 낮으니 일단 인메모리. 디스크 영속은 운영 가동 후.
+- **`min-confidence` 하드코딩(0.6).** MamaProperties 갱신은 튜닝 단계에서.
+- **TR_ID 자동 스왑.** `paperTrading=true`면 `VTTC*` 코드, false면 `TTTC*`. 실 코드를 정의하긴 했지만 절대 규칙 #3은 그대로 — 명시적 환경변수 전환 없으면 발사 불가.
+
+### 파일
+
+- `kis/TokenResponse`, `kis/KisTokenManager` — `POST /oauth2/tokenP`. `synchronized accessToken()`이 만료 5분 전까지 캐시 재사용, 그 이후 자동 재발급. `Clock` 주입으로 만료 테스트 가능.
+- `kis/OrderRequest` — `@JsonNaming(UpperSnakeCaseStrategy)`로 KIS의 `CANO`, `ACNT_PRDT_CD`, `PDNO`, `ORD_DVSN`, `ORD_QTY`, `ORD_UNPR` 매핑.
+- `kis/OrderResponse` — `rt_cd`/`msg_cd`/`msg1` + `output{KRX_FWDG_ORD_ORGNO, ODNO, ORD_TMD}`. KIS의 대소문자 혼용은 `@JsonProperty`로 명시 매핑.
+- `kis/KisClient` — `placeMarketBuy`/`placeMarketSell`. account-no를 `CANO-PRDT`로 분리, 헤더(`authorization`, `appkey`, `appsecret`, `tr_id`, `custtype=P`), 실패 시 `KisException`.
+- `executor/OrderExecutor` — `Signal + qty → ExecutionResult`. HOLD / 신뢰도 미달 → skipped, BUY/SELL → KIS 위임. 결과 record는 nested `ExecutionResult`.
+
+### 테스트 (13개 추가)
+
+- `KisTokenManagerTests` — 캐시 동작(2번 호출 1번 발급), 만료 후 재발급(MutableClock으로 시각 조작), 빈 토큰 응답 거절.
+- `KisClientTests` — 모의/실 모드에서 base URL·tr_id 스왑, 요청 헤더·body JSON 경로, rt_cd≠0 거절, 인자 검증.
+- `OrderExecutorTests` — HOLD 스킵, 저신뢰 스킵, BUY/SELL 위임, 임계값(=MIN_CONFIDENCE)에서 실행.
+
+### 의도적 미구현
+
+- **실호출 1회 검증.** 모의투자 키가 있으면 한 번 쏴서 헤더/TR_ID/응답 구조가 맞는지 확인 권장. 지금은 mock 기반 가정.
+- **재시도/rate limit 백오프.** 실제 빈도 보고 추가.
+- **잔고 확인 → 자금 부족 사전 회피.** 현재는 KIS가 거절(`rt_cd=1`)하면 그대로 예외 전파.
+- **OrderExecutor의 qty 결정.** 현재 호출자가 전달. signal에 사이즈 정보 추가하든, executor에 포지션 사이징 정책을 두든 결정 필요.
+
+### 빌드
+
+`./gradlew build` 통과, 전체 31개 테스트 그린.
+
+### 보류 / 다음
+
+- **파이프라인 결합**: ingest → generate → execute를 연결할 트리거(스케줄러/CLI/HTTP) 결정 필요. W4 후보.
+- **실API 스모크**: 모의투자 토큰 발급 1회, 1주 매수 → 정정/취소 한 사이클 수동 확인.
+- **GitHub PAT 폐기** / **JAVA_HOME 영구화**: 여전히 미해결 (운영 외 항목).
+
+### 다음 후보
+
+1. **W4 시작: 스케줄러/파이프라인 결합** — `@Scheduled`로 일일 배치, ingest → generate → execute를 한 흐름으로.
+2. **실 API 스모크 (수동)** — 모의투자 토큰 + 1주 시장가 매수 1회 검증.
+3. **Signal 영속화** — `SignalEntity` + 결과(`order_no`, `executed_at`) 저장. 측정 루프 시작.
 
 ---
 

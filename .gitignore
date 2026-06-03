@@ -49,3 +49,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code (local-only) ###
+.claude/

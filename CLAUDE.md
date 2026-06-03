@@ -16,39 +16,37 @@
 
 ## 2. 아키텍처
 
-`mama`는 **모노레포**다. 루트에는 저장소 메타·문서만 두고, 모듈별로 하위 디렉터리(`backend/`, 향후 `frontend/`·`infra/` 등)에 격리한다.
+`mama` backend는 **독립 Spring Boot 프로젝트**다. 이 워크스페이스의 범위는 `backend/` 한 폴더로 한정되며, 다른 영역(웹/모바일/인프라 등)은 별도 리포에서 관리된다. **이 폴더에서 작업할 때는 다른 영역을 고려하지 않는다.**
 
 ```
-mama/                              ← 모노레포 루트 (.git 위치)
-├── .gitignore
-├── CLAUDE.md                      ← 이 파일 (프로젝트 전반 가이드)
-└── backend/                       ← Spring Boot 모듈 (gradle 프로젝트 루트)
-    ├── build.gradle.kts           # Gradle Kotlin DSL, Spring Boot 3.5, Java 21
-    ├── settings.gradle.kts
-    ├── gradlew, gradlew.bat
-    ├── gradle/wrapper/
-    ├── .gitattributes
-    ├── .env.example               # 환경 변수 템플릿 (KIS / DART / Anthropic)
-    ├── .env                       # 실제 시크릿 — gitignored, 절대 커밋 금지
-    └── src/
-        ├── main/
-        │   ├── java/com/serveone/mama/
-        │   │   ├── MamaApplication.java        # 진입점, @ConfigurationPropertiesScan
-        │   │   ├── config/                     # @ConfigurationProperties record들
-        │   │   │   └── MamaProperties.java     # KIS / DART / Anthropic 설정 묶음
-        │   │   ├── dart/                       # DART 공시 OpenAPI 클라이언트 (W1)
-        │   │   ├── kis/                        # KIS Developers API 클라이언트 (W3)
-        │   │   ├── llm/                        # Claude 호출 + 프롬프트 (W2)
-        │   │   ├── signal/                     # 공시 → 매매 신호 변환 (W2)
-        │   │   ├── executor/                   # 신호 → 주문 실행 (W3)
-        │   │   └── scheduler/                  # 배치/스케줄러 (W4)
-        │   └── resources/
-        │       └── application.yml             # 설정 구조 + .env 자동 import
-        └── test/
-            ├── java/com/serveone/mama/
-            │   └── MamaApplicationTests.java
-            └── resources/
-                └── application.yml             # 테스트용 더미 시크릿 (실제 호출 안 함)
+backend/                           ← 이 리포 루트 (.git 위치)
+├── build.gradle.kts               # Gradle Kotlin DSL, Spring Boot 3.5, Java 21
+├── settings.gradle.kts
+├── gradlew, gradlew.bat
+├── gradle/wrapper/
+├── .gitattributes
+├── .env.example                   # 환경 변수 템플릿 (KIS / DART / Anthropic)
+├── .env                           # 실제 시크릿 — gitignored, 절대 커밋 금지
+├── CLAUDE.md                      ← 이 파일
+└── src/
+    ├── main/
+    │   ├── java/com/serveone/mama/
+    │   │   ├── MamaApplication.java        # 진입점, @ConfigurationPropertiesScan
+    │   │   ├── config/                     # @ConfigurationProperties record들
+    │   │   │   └── MamaProperties.java     # KIS / DART / Anthropic 설정 묶음
+    │   │   ├── dart/                       # DART 공시 OpenAPI 클라이언트 (W1)
+    │   │   ├── kis/                        # KIS Developers API 클라이언트 (W3)
+    │   │   ├── llm/                        # Claude 호출 + 프롬프트 (W2)
+    │   │   ├── signal/                     # 공시 → 매매 신호 변환 (W2)
+    │   │   ├── executor/                   # 신호 → 주문 실행 (W3)
+    │   │   └── scheduler/                  # 배치/스케줄러 (W4)
+    │   └── resources/
+    │       └── application.yml             # 설정 구조 + .env 자동 import
+    └── test/
+        ├── java/com/serveone/mama/
+        │   └── MamaApplicationTests.java
+        └── resources/
+            └── application.yml             # 테스트용 더미 시크릿 (실제 호출 안 함)
 ```
 
 **모듈 책임 원칙:**
@@ -57,7 +55,6 @@ mama/                              ← 모노레포 루트 (.git 위치)
 - `signal/`은 순수 도메인. 외부 호출 없음. 입력(공시) → 출력(신호)만 책임.
 - `executor/`는 신호를 받아 KIS 어댑터로 위임. 자체 비즈니스 결정 없음.
 - 새 모듈을 추가하기 전에 위 분류 안에 들어가는지 먼저 확인.
-- 향후 `frontend/`·`infra/` 등을 추가할 때는 같은 모노레포 컨벤션을 따른다 (각 모듈 자체 빌드 도구 + 자체 `.env`).
 
 ---
 
@@ -65,7 +62,7 @@ mama/                              ← 모노레포 루트 (.git 위치)
 
 ### 작업 디렉터리
 
-**모든 gradle 명령은 `backend/`에서 실행한다.** 모노레포 루트(`mama/`)에서는 `./gradlew`가 없다.
+**모든 gradle 명령은 `backend/`에서 실행한다.**
 
 ```bash
 cd /Users/woori/projects/mama/backend
