@@ -16,12 +16,13 @@ spring:
 
 mama:
   kis:
-    app-key: ${KIS_APP_KEY:}
-    app-secret: ${KIS_APP_SECRET:}
-    account-no: ${KIS_ACCOUNT_NO:}
+    app-key: ${IMI_KIS_APP_KEY:}
+    app-secret: ${IMI_KIS_APP_SECRET:}
+    account-no: ${IMI_KIS_ACCOUNT_NO:}
     paper-trading: ${KIS_PAPER_TRADING:true}
     base-url: https://openapi.koreainvestment.com:9443
     paper-base-url: https://openapivts.koreainvestment.com:29443
+    token-cache-path: ${KIS_TOKEN_CACHE_PATH:./data/kis-token.json}
   dart:
     api-key: ${DART_API_KEY:}
     base-url: https://opendart.fss.or.kr/api

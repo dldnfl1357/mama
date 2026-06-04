@@ -27,7 +27,7 @@ class DartClientTests {
         RestClient.Builder builder = RestClient.builder();
         mockServer = MockRestServiceServer.bindTo(builder).build();
         MamaProperties props = new MamaProperties(
-                new MamaProperties.Kis("k", "s", "0-0", true, "https://x", "https://y"),
+                new MamaProperties.Kis("k", "s", "0-0", true, "https://x", "https://y", null),
                 new MamaProperties.Dart("test-key", "https://opendart.fss.or.kr/api"),
                 new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );

@@ -36,7 +36,7 @@ class KisTokenManagerTests {
         clock = new MutableClock(Instant.parse("2026-06-04T00:00:00Z"));
         MamaProperties props = new MamaProperties(
                 new MamaProperties.Kis("app-key", "app-secret", "00000000-00",
-                        true, "https://live", PAPER_BASE),
+                        true, "https://live", PAPER_BASE, null),
                 new MamaProperties.Dart("d", "https://x"),
                 new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );

@@ -14,7 +14,8 @@ public record MamaProperties(Kis kis, Dart dart, OpenAi openai) {
             @NotBlank String accountNo,
             boolean paperTrading,
             @NotBlank String baseUrl,
-            @NotBlank String paperBaseUrl
+            @NotBlank String paperBaseUrl,
+            String tokenCachePath
     ) {
         public String activeBaseUrl() {
             return paperTrading ? paperBaseUrl : baseUrl;

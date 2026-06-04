@@ -23,6 +23,11 @@ class KisClientTests {
     private static final String LIVE_BASE = "https://openapi.koreainvestment.com:9443";
     private static final String ORDER_URL_PAPER = PAPER_BASE + "/uapi/domestic-stock/v1/trading/order-cash";
     private static final String ORDER_URL_LIVE = LIVE_BASE + "/uapi/domestic-stock/v1/trading/order-cash";
+    private static final String HASHKEY_URL_PAPER = PAPER_BASE + "/uapi/hashkey";
+    private static final String HASHKEY_URL_LIVE = LIVE_BASE + "/uapi/hashkey";
+    private static final String HASHKEY_BODY = """
+            {"BODY":{},"HASH":"hash-stub"}
+            """;
 
     private static final String SUCCESS_BODY = """
             {
@@ -40,7 +45,7 @@ class KisClientTests {
     private KisClient buildClient(boolean paper, KisTokenManager tokenManager, RestClient.Builder builder) {
         MamaProperties props = new MamaProperties(
                 new MamaProperties.Kis("app-key", "app-secret", "12345678-01",
-                        paper, LIVE_BASE, PAPER_BASE),
+                        paper, LIVE_BASE, PAPER_BASE, null),
                 new MamaProperties.Dart("d", "https://x"),
                 new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );
@@ -56,6 +61,8 @@ class KisClientTests {
 
         KisClient client = buildClient(true, token, builder);
 
+        server.expect(requestTo(HASHKEY_URL_PAPER))
+                .andRespond(withSuccess(HASHKEY_BODY, APPLICATION_JSON));
         server.expect(requestTo(ORDER_URL_PAPER))
                 .andExpect(method(POST))
                 .andExpect(header("authorization", "Bearer TOK"))
@@ -63,6 +70,7 @@ class KisClientTests {
                 .andExpect(header("appsecret", "app-secret"))
                 .andExpect(header("tr_id", "VTTC0802U"))
                 .andExpect(header("custtype", "P"))
+                .andExpect(header("hashkey", "hash-stub"))
                 .andExpect(jsonPath("$.CANO").value("12345678"))
                 .andExpect(jsonPath("$.ACNT_PRDT_CD").value("01"))
                 .andExpect(jsonPath("$.PDNO").value("005930"))
@@ -87,6 +95,8 @@ class KisClientTests {
 
         KisClient client = buildClient(true, token, builder);
 
+        server.expect(requestTo(HASHKEY_URL_PAPER))
+                .andRespond(withSuccess(HASHKEY_BODY, APPLICATION_JSON));
         server.expect(requestTo(ORDER_URL_PAPER))
                 .andExpect(header("tr_id", "VTTC0801U"))
                 .andRespond(withSuccess(SUCCESS_BODY, APPLICATION_JSON));
@@ -104,6 +114,8 @@ class KisClientTests {
 
         KisClient client = buildClient(false, token, builder);
 
+        server.expect(requestTo(HASHKEY_URL_LIVE))
+                .andRespond(withSuccess(HASHKEY_BODY, APPLICATION_JSON));
         server.expect(requestTo(ORDER_URL_LIVE))
                 .andExpect(header("tr_id", "TTTC0802U"))
                 .andRespond(withSuccess(SUCCESS_BODY, APPLICATION_JSON));
@@ -121,6 +133,8 @@ class KisClientTests {
 
         KisClient client = buildClient(true, token, builder);
 
+        server.expect(requestTo(HASHKEY_URL_PAPER))
+                .andRespond(withSuccess(HASHKEY_BODY, APPLICATION_JSON));
         server.expect(requestTo(ORDER_URL_PAPER))
                 .andRespond(withSuccess("""
                         {"rt_cd":"1","msg_cd":"APBK1000","msg1":"주문가능금액 부족"}
