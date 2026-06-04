@@ -6,7 +6,7 @@ import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties(prefix = "mama")
-public record MamaProperties(Kis kis, Dart dart, Anthropic anthropic) {
+public record MamaProperties(Kis kis, Dart dart, OpenAi openai) {
 
     public record Kis(
             @NotBlank String appKey,
@@ -23,5 +23,5 @@ public record MamaProperties(Kis kis, Dart dart, Anthropic anthropic) {
 
     public record Dart(@NotBlank String apiKey, @NotBlank String baseUrl) {}
 
-    public record Anthropic(@NotBlank String apiKey, @NotBlank String model) {}
+    public record OpenAi(@NotBlank String apiKey, @NotBlank String model) {}
 }

@@ -2,7 +2,7 @@ package com.serveone.mama.signal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.serveone.mama.dart.DisclosureItem;
-import com.serveone.mama.llm.ClaudeClient;
+import com.serveone.mama.llm.OpenAiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -17,13 +17,13 @@ import static org.mockito.Mockito.when;
 
 class SignalGeneratorTests {
 
-    private ClaudeClient claude;
+    private OpenAiClient openAi;
     private SignalGenerator generator;
 
     @BeforeEach
     void setUp() {
-        claude = mock(ClaudeClient.class);
-        generator = new SignalGenerator(claude, new ObjectMapper());
+        openAi = mock(OpenAiClient.class);
+        generator = new SignalGenerator(openAi, new ObjectMapper());
     }
 
     private static DisclosureItem item() {
@@ -34,7 +34,7 @@ class SignalGeneratorTests {
 
     @Test
     void generate_parsesCleanJsonResponse() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn("""
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn("""
                 {"ticker":"005930","action":"BUY","confidence":0.72,"reasoning":"호재성 공시"}
                 """);
 
@@ -48,7 +48,7 @@ class SignalGeneratorTests {
 
     @Test
     void generate_extractsJsonFromMarkdownFencedResponse() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn("""
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn("""
                 답변:
                 ```json
                 {"ticker":"005930","action":"SELL","confidence":0.4,"reasoning":"악재"}
@@ -63,7 +63,7 @@ class SignalGeneratorTests {
 
     @Test
     void generate_clampsConfidenceToZeroOneRange() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn(
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"BUY\",\"confidence\":2.5,\"reasoning\":\"x\"}");
 
         Signal signal = generator.generate(item());
@@ -73,7 +73,7 @@ class SignalGeneratorTests {
 
     @Test
     void generate_unknownActionFallsBackToHold() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn(
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"STRONG_BUY\",\"confidence\":0.9,\"reasoning\":\"x\"}");
 
         Signal signal = generator.generate(item());
@@ -83,7 +83,7 @@ class SignalGeneratorTests {
 
     @Test
     void generate_malformedOutputFallsBackToHold() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn("이건 JSON 아님");
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn("이건 JSON 아님");
 
         Signal signal = generator.generate(item());
 
@@ -95,13 +95,13 @@ class SignalGeneratorTests {
 
     @Test
     void generate_userPromptIncludesDisclosureFields() {
-        when(claude.complete(anyString(), anyString(), anyInt())).thenReturn(
+        when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"HOLD\",\"confidence\":0.1,\"reasoning\":\"x\"}");
 
         generator.generate(item());
 
         ArgumentCaptor<String> userPrompt = ArgumentCaptor.forClass(String.class);
-        verify(claude).complete(anyString(), userPrompt.capture(), anyInt());
+        verify(openAi).completeJson(anyString(), userPrompt.capture(), anyInt());
         assertThat(userPrompt.getValue())
                 .contains("삼성전자")
                 .contains("005930")

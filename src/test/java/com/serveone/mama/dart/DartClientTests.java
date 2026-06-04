@@ -29,7 +29,7 @@ class DartClientTests {
         MamaProperties props = new MamaProperties(
                 new MamaProperties.Kis("k", "s", "0-0", true, "https://x", "https://y"),
                 new MamaProperties.Dart("test-key", "https://opendart.fss.or.kr/api"),
-                new MamaProperties.Anthropic("a", "claude-haiku-4-5-20251001")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );
         client = new DartClient(builder, props);
     }

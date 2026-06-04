@@ -8,20 +8,20 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record MessagesResponse(
+public record ChatResponse(
         String id,
-        String type,
-        String role,
-        List<ContentBlock> content,
         String model,
-        String stopReason,
+        List<Choice> choices,
         Usage usage
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record ContentBlock(String type, String text) {}
+    public record Choice(int index, Message message, String finishReason) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Message(String role, String content) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Usage(int inputTokens, int outputTokens) {}
+    public record Usage(int promptTokens, int completionTokens, int totalTokens) {}
 }

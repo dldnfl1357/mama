@@ -255,6 +255,63 @@
 
 ---
 
+## 2026-06-04 — LLM 공급자 변경 (Anthropic → OpenAI)
+
+### 결정
+
+- 사용자 지시로 LLM을 **Anthropic Claude → OpenAI GPT** 로 전환.
+- 모델: `gpt-4o-mini` (Haiku 4.5 의 비용/속도 등가 포지션).
+- 호출 패턴: 기존 `RestClient` 직접 호출 유지 — SDK 미사용.
+
+### 변경
+
+- `MamaProperties`: record `Anthropic(apiKey, model)` → `OpenAi(apiKey, model)`. 필드명 `anthropic` → `openai`.
+- `application.yml` 본/테스트: `mama.anthropic` → `mama.openai`, 모델 `claude-haiku-4-5-20251001` → `gpt-4o-mini`. 환경변수 `ANTHROPIC_API_KEY` → `OPENAI_API_KEY` (사용자가 `.env` 선반영).
+- `.env.example`: ANTHROPIC → OPENAI 키로 갱신, 발급 URL(`platform.openai.com/api-keys`) 추가.
+- `llm/`: `ClaudeClient`, `MessagesRequest`, `MessagesResponse`, `ClaudeClientException` 삭제. `OpenAiClient`, `ChatRequest`, `ChatResponse`, `OpenAiClientException` 신설.
+- `OpenAiClient` API: 기존 `complete(system, user, maxTokens) → String` 유지. **추가로 `completeJson(...)`** — OpenAI의 `response_format: json_object` 네이티브 지원 활용. 파싱 신뢰도 향상.
+- `SignalGenerator`: 의존성 `ClaudeClient` → `OpenAiClient`, 호출 `complete` → `completeJson`. 프롬프트에서 "마크다운/코드펜스 금지" 문구 제거 (json_object 모드에서 불필요). 견고한 파서 fallback은 그대로 유지.
+- 테스트: 4개 파일에서 `MamaProperties.Anthropic(...)` → `MamaProperties.OpenAi(...)` 일괄 갱신. `ClaudeClientTests` → `OpenAiClientTests` (Chat Completions 스키마로 재작성, `response_format` 검증 케이스 포함). `SignalGeneratorTests` 의 mock 타겟 변경.
+
+### 의도적 미구현 / 결정 보류
+
+- **structured outputs (`response_format: {type:"json_schema", ...}`)**: `json_object` 만으로도 충분히 안정. 스키마 강제는 신호 출력 안정화 후 도입 고려.
+- **OpenAI organization/project header**: 단일 사용자라 불필요.
+- **tool calling / function calling**: 현재 단순 prompt-and-parse 로 충분.
+- **재시도/rate limit**: 빈도 보고 추가.
+
+### 빌드
+
+`./gradlew build` 통과, 전체 31개 테스트 그린.
+
+### 영향 없음
+
+- DART/KIS 모듈, executor, dart 영속화는 그대로. LLM 어댑터·signal 만 격리 변경.
+
+---
+
+## 2026-06-04 — 커밋·푸시 + 보안 사고 재발
+
+### 진행
+
+- W1 마무리 + W2 + W3 를 단일 커밋 `592dcba`로 묶어 `origin/main`에 push. 30 files / +1622 / -50.
+- `.claude/`(로컬 권한 설정)을 `.gitignore`에 추가.
+- `CHECKLIST.md` 신설 — WORKLOG narrative 와 분리해 "지금 열려있는 항목"만 평면 리스트로.
+
+### 보안 사고 (재발 — 반복 금지)
+
+- 사용자가 GitHub PAT `ghp_3G3fMi...`를 **두 번째로** 채팅에 평문 노출하며 "이걸로 푸시"를 명시 지시. 동일 prefix 는 이미 2026-06-01 일지에 폐기 권고로 기록돼 있었으나 폐기되지 않은 상태.
+- 두 차례 거절·경고 후 사용자 재지시에 따라 **1회성 URL 인증**(`https://user:token@host/...`)으로 push. 키체인/credential store 에 저장하지 않고 출력 token 패턴은 sed 마스킹.
+- 키체인의 `github_pat_11AM...`(fine-grained)도 이전 세션 노출분 — 여전히 active.
+- **두 토큰 모두 즉시 폐기 필요.** WORKLOG 와 CHECKLIST에 긴급 항목으로 박음.
+
+### 결정 (다음 세션 이후 적용)
+
+- **인증 방식 통일**: `gh auth login --web` 만 사용. PAT 발급·수동 입력 금지. 토큰을 셸/채팅에 직접 노출하는 흐름 자체를 차단.
+- **이런 사고가 다시 나면**: 동일 패턴 반복 — (1) 노출 즉시 경고 (2) 사용자 명시 재승인 있을 때만 1회성·비저장으로 사용 (3) 출력 마스킹 (4) 직후 강하게 폐기 권고.
+
+---
+
 ## 일지 작성 규칙 (셀프)
 
 - 한 작업 세션 끝나면 날짜 섹션 추가.

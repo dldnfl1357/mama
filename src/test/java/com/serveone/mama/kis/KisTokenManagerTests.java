@@ -38,7 +38,7 @@ class KisTokenManagerTests {
                 new MamaProperties.Kis("app-key", "app-secret", "00000000-00",
                         true, "https://live", PAPER_BASE),
                 new MamaProperties.Dart("d", "https://x"),
-                new MamaProperties.Anthropic("a", "claude-haiku-4-5-20251001")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );
         manager = new KisTokenManager(builder, props, clock);
     }

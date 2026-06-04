@@ -42,7 +42,7 @@ class KisClientTests {
                 new MamaProperties.Kis("app-key", "app-secret", "12345678-01",
                         paper, LIVE_BASE, PAPER_BASE),
                 new MamaProperties.Dart("d", "https://x"),
-                new MamaProperties.Anthropic("a", "claude-haiku-4-5-20251001")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini")
         );
         return new KisClient(builder, props, tokenManager);
     }

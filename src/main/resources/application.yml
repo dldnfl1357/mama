@@ -25,9 +25,9 @@ mama:
   dart:
     api-key: ${DART_API_KEY:}
     base-url: https://opendart.fss.or.kr/api
-  anthropic:
-    api-key: ${ANTHROPIC_API_KEY:}
-    model: claude-haiku-4-5-20251001
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-4o-mini
 
 logging:
   level:
