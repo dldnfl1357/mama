@@ -15,7 +15,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -211,6 +210,32 @@ class KisClientTests {
                 .isInstanceOf(KisException.class)
                 .hasMessageContaining("rt_cd=1");
         server.verify();
+    }
+
+    @Test
+    void inquireQuote_propagatesNumberFormatExceptionWhenStckPrprIsNonNumeric() {
+        String body = """
+                {
+                  "rt_cd": "0",
+                  "msg_cd": "MCA00000",
+                  "msg1": "ok",
+                  "output": {"stck_prpr": "not-a-number"}
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        KisTokenManager token = mock(KisTokenManager.class);
+        when(token.accessToken()).thenReturn("TOK");
+
+        KisClient client = buildClient(true, token, builder);
+
+        server.expect(requestTo("https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=005930"))
+                .andRespond(withSuccess(body, APPLICATION_JSON));
+
+        QuoteResponse resp = client.inquireQuote("005930");
+
+        assertThatThrownBy(resp::currentPrice)
+                .isInstanceOf(NumberFormatException.class);
     }
 
     @Test
