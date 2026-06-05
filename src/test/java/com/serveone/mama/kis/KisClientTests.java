@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -48,7 +50,10 @@ class KisClientTests {
                 new MamaProperties.Kis("app-key", "app-secret", "12345678-01",
                         paper, LIVE_BASE, PAPER_BASE, null),
                 new MamaProperties.Dart("d", "https://x"),
-                new MamaProperties.OpenAi("a", "gpt-4o-mini")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini"),
+                new MamaProperties.Watchlist(List.of()),
+                new MamaProperties.Executor(0.01, 0.6),
+                new MamaProperties.Pipeline("0 0 16 * * MON-FRI", "0 5 9 * * MON-FRI", 0L)
         );
         return new KisClient(builder, props, tokenManager);
     }

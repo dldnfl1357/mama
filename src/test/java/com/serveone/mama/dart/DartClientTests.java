@@ -7,6 +7,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
@@ -29,7 +30,10 @@ class DartClientTests {
         MamaProperties props = new MamaProperties(
                 new MamaProperties.Kis("k", "s", "0-0", true, "https://x", "https://y", null),
                 new MamaProperties.Dart("test-key", "https://opendart.fss.or.kr/api"),
-                new MamaProperties.OpenAi("a", "gpt-4o-mini")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini"),
+                new MamaProperties.Watchlist(List.of()),
+                new MamaProperties.Executor(0.01, 0.6),
+                new MamaProperties.Pipeline("0 0 16 * * MON-FRI", "0 5 9 * * MON-FRI", 0L)
         );
         client = new DartClient(builder, props);
     }

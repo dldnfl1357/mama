@@ -21,3 +21,12 @@ mama:
   openai:
     api-key: test-openai-key
     model: gpt-4o-mini
+  watchlist:
+    tickers: []
+  executor:
+    cash-fraction: 0.01
+    min-confidence: 0.6
+  pipeline:
+    signal-phase-cron: "0 0 16 * * MON-FRI"
+    execution-phase-cron: "0 5 9 * * MON-FRI"
+    transient-retry-backoff-ms: 0

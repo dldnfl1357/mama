@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,7 +39,10 @@ class KisTokenManagerTests {
                 new MamaProperties.Kis("app-key", "app-secret", "00000000-00",
                         true, "https://live", PAPER_BASE, null),
                 new MamaProperties.Dart("d", "https://x"),
-                new MamaProperties.OpenAi("a", "gpt-4o-mini")
+                new MamaProperties.OpenAi("a", "gpt-4o-mini"),
+                new MamaProperties.Watchlist(List.of()),
+                new MamaProperties.Executor(0.01, 0.6),
+                new MamaProperties.Pipeline("0 0 16 * * MON-FRI", "0 5 9 * * MON-FRI", 0L)
         );
         manager = new KisTokenManager(builder, props, clock);
     }
