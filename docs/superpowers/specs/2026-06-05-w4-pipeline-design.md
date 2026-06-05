@@ -331,9 +331,10 @@ public final class RetryHelper {
 - `OrderExecutor.MIN_CONFIDENCE` 하드코딩 제거, 프로퍼티 주입
 - `application.yml` (본/테스트) 신규 설정 키 추가
 - 기존 테스트 일괄 갱신 (이전 시그니처 사용 케이스)
+- `KisSmokeRunner`: `inquireQuote/inquireBalance` 호출부를 typed 결과 로깅으로 변경 (`quote.currentPrice()`, `balance.deposit()`)
 
 삭제:
 - `DisclosureItem`을 generator 입력으로 쓰던 케이스 (테스트만 영향)
 - `IngestResult` record
 
-영향 없음: `DartClient`, `KisTokenManager`, `OpenAiClient`, `DisclosureEntity`, 기존 `DisclosureRepository`, `KisSmokeRunner`.
+영향 없음: `DartClient`, `KisTokenManager`, `OpenAiClient`, `DisclosureEntity`, 기존 `DisclosureRepository`.
