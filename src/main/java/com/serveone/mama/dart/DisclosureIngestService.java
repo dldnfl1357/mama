@@ -25,7 +25,7 @@ public class DisclosureIngestService {
     }
 
     @Transactional
-    public IngestResult ingest(LocalDate from, LocalDate to, int pageNo, int pageCount) {
+    public IngestPage ingest(LocalDate from, LocalDate to, int pageNo, int pageCount) {
         DisclosureListResponse response = dartClient.fetchDisclosures(from, to, pageNo, pageCount);
         if (!response.isSuccess()) {
             throw new DartIngestException(
@@ -37,10 +37,9 @@ public class DisclosureIngestService {
                 .map(item -> DisclosureEntity.of(item, now))
                 .toList();
         repository.saveAll(entities);
+        int totalPage = response.totalPage() != null && response.totalPage() > 0 ? response.totalPage() : 1;
         log.info("ingested {} disclosures ({} ~ {} page {}/{})",
-                entities.size(), from, to, response.pageNo(), response.totalPage());
-        return new IngestResult(items.size(), entities.size());
+                entities.size(), from, to, response.pageNo(), totalPage);
+        return new IngestPage(entities, totalPage);
     }
-
-    public record IngestResult(int fetched, int saved) {}
 }

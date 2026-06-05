@@ -46,10 +46,10 @@ class DisclosureIngestServiceTests {
                 "000", "정상", 1, 10, 1, 1, List.of(item));
         when(dartClient.fetchDisclosures(eq(DAY), eq(DAY), anyInt(), anyInt())).thenReturn(response);
 
-        DisclosureIngestService.IngestResult result = service.ingest(DAY, DAY, 1, 10);
+        IngestPage page = service.ingest(DAY, DAY, 1, 10);
 
-        assertThat(result.fetched()).isEqualTo(1);
-        assertThat(result.saved()).isEqualTo(1);
+        assertThat(page.entities()).hasSize(1);
+        assertThat(page.totalPage()).isEqualTo(1);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<DisclosureEntity>> captor = ArgumentCaptor.forClass(List.class);
@@ -67,10 +67,10 @@ class DisclosureIngestServiceTests {
                 "000", "정상", 1, 10, 0, 0, null);
         when(dartClient.fetchDisclosures(eq(DAY), eq(DAY), anyInt(), anyInt())).thenReturn(response);
 
-        DisclosureIngestService.IngestResult result = service.ingest(DAY, DAY, 1, 10);
+        IngestPage page = service.ingest(DAY, DAY, 1, 10);
 
-        assertThat(result.fetched()).isZero();
-        assertThat(result.saved()).isZero();
+        assertThat(page.entities()).isEmpty();
+        assertThat(page.totalPage()).isEqualTo(1);
         verify(repository).saveAll(List.of());
     }
 
