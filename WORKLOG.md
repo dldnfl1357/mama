@@ -312,6 +312,136 @@
 
 ---
 
+## 2026-06-04 — KIS 모의투자 첫 실 스모크 (인증/시세/잔고 정상, 주문은 운영시간 외)
+
+### 트리거
+
+CHECKLIST의 "실 API 스모크 (수동)" 항목을 처음으로 직접 호출. 단위 테스트는 다 그린이지만 실제 KIS 게이트웨이 응답은 한 번도 본 적 없는 상태였음.
+
+### 키 매핑 결정
+
+`.env`에 `KIS_*`(실계좌 추정)와 `IMI_KIS_*`(모의투자) 두 세트가 공존. **`application.yml`을 직접 `IMI_KIS_*` 참조로 변경** — 모의투자가 디폴트이므로 슬롯에 IMI 키를 박는 게 더 명시적. 실계좌로 갈 일이 생기면 그 시점에 절대 규칙 #3에 따라 명시 전환. (대안이었던 런타임 환경변수 오버라이드는 흔적 안 남아서 기각.)
+
+### 토큰 디스크 영속화
+
+사용자 지시: KIS 토큰 발급에 rate limit이 자주 걸리니 한 번 발급되면 디스크에 영구저장 후 만료 전까지 재사용. → `KisTokenManager`에 `@PostConstruct loadFromDisk()` + refresh 시 `saveToDisk()`. 캐시 파일은 `./data/kis-token.json` (gitignored). **paper/live 모드 일치 검사를 캐시에 박음** — 모드 바꿨을 때 잘못된 토큰을 재사용하는 사고 방지.
+
+### KIS 주문 엔드포인트의 함정 (영구 기록)
+
+**EGW00202 = "GW통신 중 에러" = 운영시간 외 거절** 이 가장 흔한 원인. 결정적 증거:
+
+| 호출 | 결과 |
+|---|---|
+| `POST /oauth2/tokenP` (토큰) | ✅ 24/7 |
+| `GET /quotations/inquire-price` (시세) | ✅ 24/7, 정상 응답 |
+| `GET /trading/inquire-balance` (잔고) | ✅ 24/7, **동일 CANO/PRDT 포맷으로** 정상 응답 |
+| `POST /trading/order-cash` (주문) | ❌ `rt_cd=1 msg_cd=EGW00202` |
+
+같은 토큰·같은 게이트웨이 호스트(`openapivts.koreainvestment.com:29443`)에서 GET 두 개가 같은 계좌 포맷으로 통과하는데 POST 주문만 거절 → 인증/계좌/포맷 문제 아님. **KIS 모의투자 주문 접수 시간이 평일 09:00~18:00 KST로 한정**되는 정책이 거의 확실. 22:20 KST 시점 호출이었음.
+
+### 다른 함정들
+
+- **RestClient `.retrieve()`의 기본 동작은 4xx/5xx에서 throw.** KIS는 에러 응답을 HTTP 500 + JSON body(`rt_cd`, `msg_cd`)로 반환하는데, 기본 동작으로는 body 파싱 전에 `HttpServerErrorException`이 터져서 진단이 어려움. → `.onStatus(s -> s.isError(), (req, resp) -> {})`로 기본 핸들러 무력화하고 body를 `OrderResponse`로 그대로 파싱하게 변경. 다음에도 외부 API 에러 body를 보고 싶으면 동일 패턴 사용.
+- **hashkey는 무죄였음.** EGW00202 community-반례로 hashkey 누락이 자주 꼽혀서 추가했는데, hashkey 포함 후에도 동일 에러. 운영시간 외엔 hashkey 있든 없든 거절. 다만 hashkey 자체는 정상 발급되는 게 확인됐고, 향후 실거래에서 어차피 필요할 수 있어 유지.
+- **SQLite 데이터 디렉터리는 자동 생성 안 됨.** `jdbc:sqlite:./data/mama.db` 인데 `./data/`가 없으면 부팅 자체가 실패. 첫 부팅 전 `mkdir data` 필수. (CI/배포 스크립트에 박을 일이 생기면 그때 챙김.)
+
+### 검증된 사실 (모의계좌 실측치)
+
+- 모의계좌 초기 예수금: **10,000,000원**
+- 토큰 `expires_in`: 86400s (24시간)
+- 삼성전자(005930) 현재가 (2026-06-04 22:20 기준): 351,500원 — 30,000원 지정가는 시가 대비 약 8.5%라 운영시간 내 다시 쏴도 체결 안 됨 (스모크 안전 가격)
+
+### 추가된 코드 (커밋 `1a1020b`, 10 files / +426 / -18)
+
+- `KisClient`: `placeLimitBuy`, `modifyOrder`, `cancelOrder`, `inquireQuote`, `inquireBalance` 신설. 모든 주문/취소에 hashkey 헤더. `onStatus` 에러 body 파싱.
+- `CancelRequest` record 신설.
+- `KisTokenManager`: 디스크 영속화 + paper/live 모드 매칭.
+- `KisSmokeRunner` (`@Profile("smoke")`): 6단계 흐름. `paperTrading=false`면 거부. 끝나면 `ConfigurableApplicationContext`로 graceful exit.
+- `MamaProperties.Kis.tokenCachePath` 신설.
+- 단위 테스트: hashkey mock + record 생성자 인자 동기화. 전체 34 테스트 그대로 그린.
+
+### 의도적 미구현
+
+- **자동 운영시간 우회/스케줄링 안 함.** 일단 사람이 09:00~18:00에 한 번 돌려서 매수/정정/취소 사이클이 깨끗하게 닫히는지부터 본 후 결정.
+- **hashkey 캐싱 안 함.** 매 주문마다 새로 발급. 비용 무시 가능, 향후 rate limit 보고 추가.
+- **재시도/백오프 안 함.** EGW00202 같은 정책성 에러는 재시도해도 안 풀림. 일시 네트워크 오류는 빈도 보고 결정.
+- **TR_ID 분기 외 실계좌 차단은 그대로 절대 규칙 #3에 위임.** `KisSmokeRunner`도 `paperTrading=true` 가드 한 줄만 추가.
+
+### 보류 / 다음 세션 우선 확인
+
+- **2026-06-05 (금) 09:00~18:00 KST에 동일 스모크 재실행** — `./gradlew bootRun --args="--spring.profiles.active=smoke"`. 토큰 만료 시각은 `2026-06-05T13:12:22Z` (22:12 KST)이므로 그 전에 돌면 신규 발급도 안 일어남. 매수/정정/취소가 깨끗하게 닫히는지가 진짜 검증 포인트.
+- **CHECKLIST 갱신** — "실 API 스모크" 하위에 인증/시세/잔고는 완료 체크, 주문 사이클은 09:00 이후로 미룬다는 표시.
+- **GitHub PAT 폐기** / **JAVA_HOME 영구화**: 여전히 미해결 (Windows 머신에선 JAVA_HOME 이슈 없음 — Gradle toolchain이 JDK 21을 자동으로 가져옴).
+
+### 다음 후보
+
+1. **운영시간 내 KIS 스모크 재실행 (위 보류 항목 1번).**
+2. **W4 시작: 파이프라인 결합** — ingest → generate → execute 트리거. 운영시간 내 주문 사이클 확인 후 W4로 넘어가는 게 자연스러움.
+3. **Signal 영속화** — 측정 루프 본격화. 출력 안정화 확인 후.
+
+---
+
+## 2026-06-05 — W4 설계·계획 + 부분 구현 (Task 1~5/12 완료, 중단)
+
+### 결정 (브레인스토밍 결과 — `docs/superpowers/specs/2026-06-05-w4-pipeline-design.md`, 커밋 `73d6662`)
+
+- **트리거**: `@Scheduled` 자동 + Manual CLI 프로파일. 비즈니스 로직은 `PipelineRunner` 한 곳, 트리거 어댑터 2개(`PipelineScheduler`, `PipelineCliRunner`)는 얇은 래퍼.
+- **시간축 모델**: 2-phase. (A) 16:00 KST = 오늘 공시 ingest → 워치리스트 필터 → LLM 신호 → DB. (B) 익일 09:05 KST = 어제 신호 → 예수금 1% 사이징 → KIS 시장가 주문. CLAUDE.md 도메인 함정 #3 ("장 마감 후 공시는 익일 시가에 반영")을 코드 구조에 반영.
+- **입력 필터**: `mama.watchlist.tickers`. 비면 신호 0건 — 첫 부팅 안전.
+- **수량 정책**: 예수금 × `cash-fraction` ÷ 현재가, `floor`. 디폴트 0.01 (1%). 잔고·시세 조회는 어제 KIS 스모크에서 운영시간 무관 동작 확인됨.
+- **중복 신호**: ticker별 confidence 최댓값 1건만 winner, 나머지 `markSuperseded`.
+- **에러**: phase-fatal(DART fetch / 잔고 조회) vs per-signal(LLM / 시세 / 주문). per-signal은 `RetryHelper`로 1회 자동 재시도, 그래도 실패면 `SignalEntity.markFailed`.
+
+### 12-task 구현 계획 (`docs/superpowers/plans/2026-06-05-w4-pipeline.md`, 커밋 `7f1f577`)
+
+TDD 단계별로 분해. 각 task = 1 commit. 진행은 subagent-driven-development 스킬로 구현자/spec reviewer/code-quality reviewer 3-에이전트 루프.
+
+### 완료한 task (5/12)
+
+| Task | 커밋 | 핵심 변경 |
+|---|---|---|
+| 1 | `d42fdf7` (+ fix `7cc297a`) | `kis/QuoteResponse`, `kis/BalanceResponse` 신설 (typed). `KisClient.inquireQuote/inquireBalance` 반환 타입 String → typed record. `KisSmokeRunner` 호출부 동기화. KIS raw String 시대 종료. |
+| 2 | `47d3b77` | `signal/entity/SignalEntity` (`@Entity @Table("signal")`, `success`/`failed` 팩토리 + `markExecuted`/`markFailed`/`markSuperseded` 상태 머신) + `signal/SignalRepository.findExecutable(minConfidence)`. SQLite 자동 DDL. |
+| 3 | `3fe39fc` | `dart/IngestPage(entities, totalPage)` 신설. `DisclosureIngestService.ingest()` 반환 타입 `IngestResult` → `IngestPage`. inner record 제거. *Note: 스펙 외 추가 — `totalPage=0 → 1` fallback이 들어갔으나 그걸 검증하는 테스트(`ingest_handlesEmptyList`)가 함께 있어 documented deviation으로 accept.* |
+| 4 | `28b4e0f` | `SignalGenerator.generate()` 입력 `DisclosureItem` → `DisclosureEntity`. `rceptDt` 가 `LocalDate.toString()` (ISO-8601, `2026-06-01`) 로 stringify되어 프롬프트 가독성 향상. |
+| 5 | `6f914d0` | `MamaProperties` 3개 sub-record 추가 (`Watchlist`, `Executor`, `Pipeline`). 두 yml(메인/테스트)에 신규 키 추가, 테스트 yml 의 `transient-retry-backoff-ms: 0` 로 fast loop. 4 개 테스트 파일의 `new MamaProperties(...)` 호출 사이트(현재 3-arg → 6-arg) 일괄 갱신. |
+
+### 남은 task (6/12)
+
+플랜 그대로 이어 갈 것. base SHA = `6f914d0`.
+
+| Task | 의도 |
+|---|---|
+| 6 | `OrderExecutor.MIN_CONFIDENCE` 하드코딩 제거 → `MamaProperties.Executor.minConfidence` 주입. 테스트 `setUp` MamaProperties 추가 인자. |
+| 7 | `pipeline/RetryHelper` (1회 재시도 유틸) + 4 단위 테스트. |
+| 8 | `PipelineRunner.runSignalPhase()` (Phase A) + `SignalPhaseResult`. `PipelineRunnerTests`의 `@Nested SignalPhase` 6 케이스. 페이지네이션 자동 반복은 `PipelineRunner` 책임. |
+| 9 | `PipelineRunner.runExecutionPhase()` (Phase B) + `ExecutionPhaseResult`. `@Nested ExecutionPhase` 7 케이스. 잔고 1회 조회 + winner 직렬 처리 + per-winner retry. |
+| 10 | `PipelineScheduler` (`@Profile("!pipeline")` + 두 `@Scheduled` 메서드) + `MamaApplication` 에 `@EnableScheduling`. |
+| 11 | `PipelineCliRunner` (`@Profile("pipeline")`, `--phase=signal\|execute`). |
+| 12 | `./gradlew clean build` 그린 확인 + `bootRun` 으로 `signal` DDL 확인 + WORKLOG/CHECKLIST 마무리. |
+
+### 의도적으로 안 한 / 안 할 것
+
+- 실API 스모크 별도로 안 만듦 — 코드 마무리되면 **다음 평일 16:00 KST 자동 실행이 곧 첫 LLM 실호출**, 익일 09:05 KST가 첫 주문.
+- 휴장일 자동 감지 안 함. KIS 가 `EGW00202` 등으로 거절하면 `markFailed`로 영구화. 사람이 row 수동 reset 가능.
+- 잔고 재조회 안 함. 직렬 처리 중 cash 재산정 무시 — 다음 phase에서 다시 정확해짐.
+- `spring-retry` 의존성 추가 안 함 — 5줄 유틸로 충분.
+
+### 다음 세션 시작 시 우선 확인
+
+1. **워치리스트 시드 필요**. `mama.watchlist.tickers` 가 비어 있으면 Phase A가 신호 0건. 측정 루프가 돌지 않음. 5~10개 종목을 yml 에 넣어야 의미 있는 자동 실행.
+2. **현재 5/12 완료 상태에서 빌드는 그린**. `./gradlew build` 통과 (51 → 약 41 테스트, Tasks 1·2의 신규 테스트 9개 + 기존 31).
+3. **재개 명령**: `docs/superpowers/plans/2026-06-05-w4-pipeline.md` 의 Task 6 부터. subagent-driven-development 스킬 그대로 계속 — 이전과 동일하게 구현자/spec/quality 3-에이전트 루프.
+4. **GitHub PAT 폐기** / **JAVA_HOME 영구화**: 여전히 미해결 (Windows 머신은 Gradle toolchain 자동이라 후자는 무영향).
+
+### 메모리 후보 (다음 세션이 알아두면 좋을 것)
+
+- 이 프로젝트의 작업 컨벤션: subagent-driven-development 로 12-task 플랜을 분해해 작업. 구현자는 haiku(기계적 작업)/sonnet(integration)으로 선택.
+- "Approved with comments" 가 났을 때, 그 comments 가 advisory 면 fix 없이 통과시켜도 된다는 판단 (Task 5 사례). 단 spec deviation 은 별개 — Task 3 처럼 새 테스트가 그 행동을 lock-in 하면 documented deviation 으로 accept.
+- 도메인 컨텍스트: 백엔드 워크스페이스는 repo 루트 = Spring Boot 루트 (nested `backend/` 없음). CLAUDE.md 의 `cd backend` 표현은 monorepo 시절 잔재.
+
+---
+
 ## 일지 작성 규칙 (셀프)
 
 - 한 작업 세션 끝나면 날짜 섹션 추가.
