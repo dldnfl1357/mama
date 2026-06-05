@@ -62,8 +62,8 @@ public class KisSmokeRunner implements ApplicationRunner {
 
         log.info("[2/6] Quote (current price) for {}", TICKER);
         try {
-            String quote = kisClient.inquireQuote(TICKER);
-            log.info("[2/6] OK quote response received (len={})", quote != null ? quote.length() : 0);
+            QuoteResponse quote = kisClient.inquireQuote(TICKER);
+            log.info("[2/6] OK currentPrice={}", quote.currentPrice());
         } catch (RuntimeException e) {
             log.warn("[2/6] quote failed: {}", e.getMessage());
         }
@@ -72,8 +72,8 @@ public class KisSmokeRunner implements ApplicationRunner {
 
         log.info("[3/6] Balance inquiry");
         try {
-            String balance = kisClient.inquireBalance();
-            log.info("[3/6] OK balance response received (len={})", balance != null ? balance.length() : 0);
+            BalanceResponse balance = kisClient.inquireBalance();
+            log.info("[3/6] OK deposit={} holdings={}", balance.deposit(), balance.holdingsByTicker().size());
         } catch (RuntimeException e) {
             log.warn("[3/6] balance failed: {}", e.getMessage());
         }

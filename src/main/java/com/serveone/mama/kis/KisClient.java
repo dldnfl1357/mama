@@ -66,12 +66,12 @@ public class KisClient {
         return reviseOrCancel(krxFwdgOrdOrgno, orderNo, RVSE_CNCL_CANCEL, ORD_UNPR_MARKET);
     }
 
-    public String inquireQuote(String ticker) {
+    public QuoteResponse inquireQuote(String ticker) {
         if (ticker == null || ticker.isBlank()) {
             throw new IllegalArgumentException("ticker is blank");
         }
         log.info("KIS quote: tr={} ticker={}", TR_QUOTE, ticker);
-        String body = restClient.get()
+        QuoteResponse response = restClient.get()
                 .uri(props.activeBaseUrl() + QUOTE_PATH
                         + "?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=" + ticker)
                 .header("authorization", "Bearer " + tokenManager.accessToken())
@@ -81,16 +81,22 @@ public class KisClient {
                 .header("custtype", "P")
                 .retrieve()
                 .onStatus(status -> status.isError(), (req, resp) -> {})
-                .body(String.class);
-        log.info("KIS quote raw: {}", body);
-        return body;
+                .body(QuoteResponse.class);
+        if (response == null) {
+            throw new KisException("KIS quote returned null body");
+        }
+        if (!response.isSuccess()) {
+            throw new KisException(
+                    "KIS quote failed: rt_cd=" + response.rtCd() + " msg_cd=" + response.msgCd() + " msg=" + response.msg());
+        }
+        return response;
     }
 
-    public String inquireBalance() {
+    public BalanceResponse inquireBalance() {
         String[] parts = splitAccount();
         String trId = props.paperTrading() ? TR_PAPER_BALANCE : TR_LIVE_BALANCE;
         log.info("KIS balance: tr={} paper={}", trId, props.paperTrading());
-        String body = restClient.get()
+        BalanceResponse response = restClient.get()
                 .uri(props.activeBaseUrl() + BALANCE_PATH
                         + "?CANO=" + parts[0]
                         + "&ACNT_PRDT_CD=" + parts[1]
@@ -104,9 +110,15 @@ public class KisClient {
                 .header("custtype", "P")
                 .retrieve()
                 .onStatus(status -> status.isError(), (req, resp) -> {})
-                .body(String.class);
-        log.info("KIS balance raw: {}", body);
-        return body;
+                .body(BalanceResponse.class);
+        if (response == null) {
+            throw new KisException("KIS balance returned null body");
+        }
+        if (!response.isSuccess()) {
+            throw new KisException(
+                    "KIS balance failed: rt_cd=" + response.rtCd() + " msg_cd=" + response.msgCd() + " msg=" + response.msg());
+        }
+        return response;
     }
 
     public OrderResponse modifyOrder(String krxFwdgOrdOrgno, String orderNo, long newUnitPrice) {

@@ -9,11 +9,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -159,5 +161,118 @@ class KisClientTests {
         assertThatThrownBy(() -> client.placeMarketBuy("005930", 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("qty");
+    }
+
+    @Test
+    void inquireQuote_parsesCurrentPriceFromKisResponse() {
+        String body = """
+                {
+                  "rt_cd": "0",
+                  "msg_cd": "MCA00000",
+                  "msg1": "정상처리되었습니다.",
+                  "output": {"stck_prpr": "75100"}
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        KisTokenManager token = mock(KisTokenManager.class);
+        when(token.accessToken()).thenReturn("TOK");
+
+        KisClient client = buildClient(true, token, builder);
+
+        server.expect(requestTo("https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=005930"))
+                .andExpect(method(GET))
+                .andExpect(header("tr_id", "FHKST01010100"))
+                .andRespond(withSuccess(body, APPLICATION_JSON));
+
+        QuoteResponse resp = client.inquireQuote("005930");
+
+        assertThat(resp.isSuccess()).isTrue();
+        assertThat(resp.currentPrice()).isEqualTo(75100L);
+        server.verify();
+    }
+
+    @Test
+    void inquireQuote_throwsWhenRtCodeIsNonZero() {
+        String body = """
+                { "rt_cd": "1", "msg_cd": "X", "msg1": "bad", "output": null }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        KisTokenManager token = mock(KisTokenManager.class);
+        when(token.accessToken()).thenReturn("TOK");
+
+        KisClient client = buildClient(true, token, builder);
+
+        server.expect(requestTo("https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=005930"))
+                .andRespond(withSuccess(body, APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.inquireQuote("005930"))
+                .isInstanceOf(KisException.class)
+                .hasMessageContaining("rt_cd=1");
+        server.verify();
+    }
+
+    @Test
+    void inquireBalance_parsesDepositAndHoldings() {
+        String body = """
+                {
+                  "rt_cd": "0",
+                  "msg_cd": "TTTC8434R000",
+                  "msg1": "ok",
+                  "output1": [
+                    {"pdno": "005930", "hldg_qty": "10"},
+                    {"pdno": "035720", "hldg_qty": "3"}
+                  ],
+                  "output2": [
+                    {"dnca_tot_amt": "10000000"}
+                  ]
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        KisTokenManager token = mock(KisTokenManager.class);
+        when(token.accessToken()).thenReturn("TOK");
+
+        KisClient client = buildClient(true, token, builder);
+
+        server.expect(requestTo("https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/trading/inquire-balance?CANO=12345678&ACNT_PRDT_CD=01&AFHR_FLPR_YN=N&OFL_YN=&INQR_DVSN=02&UNPR_DVSN=01&FUND_STTL_ICLD_YN=N&FNCG_AMT_AUTO_RDPT_YN=N&PRCS_DVSN=00&CTX_AREA_FK100=&CTX_AREA_NK100="))
+                .andExpect(method(GET))
+                .andExpect(header("tr_id", "VTTC8434R"))
+                .andRespond(withSuccess(body, APPLICATION_JSON));
+
+        BalanceResponse resp = client.inquireBalance();
+
+        assertThat(resp.deposit()).isEqualTo(10_000_000L);
+        assertThat(resp.holdingsByTicker())
+                .containsEntry("005930", 10)
+                .containsEntry("035720", 3);
+        server.verify();
+    }
+
+    @Test
+    void inquireBalance_returnsEmptyHoldingsWhenOutput1IsNull() {
+        String body = """
+                {
+                  "rt_cd": "0", "msg_cd": "X", "msg1": "ok",
+                  "output1": null,
+                  "output2": [{"dnca_tot_amt": "1000"}]
+                }
+                """;
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        KisTokenManager token = mock(KisTokenManager.class);
+        when(token.accessToken()).thenReturn("TOK");
+
+        KisClient client = buildClient(true, token, builder);
+
+        server.expect(requestTo("https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/trading/inquire-balance?CANO=12345678&ACNT_PRDT_CD=01&AFHR_FLPR_YN=N&OFL_YN=&INQR_DVSN=02&UNPR_DVSN=01&FUND_STTL_ICLD_YN=N&FNCG_AMT_AUTO_RDPT_YN=N&PRCS_DVSN=00&CTX_AREA_FK100=&CTX_AREA_NK100="))
+                .andRespond(withSuccess(body, APPLICATION_JSON));
+
+        BalanceResponse resp = client.inquireBalance();
+
+        assertThat(resp.deposit()).isEqualTo(1000L);
+        assertThat(resp.holdingsByTicker()).isEmpty();
+        server.verify();
     }
 }
