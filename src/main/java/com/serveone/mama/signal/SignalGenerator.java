@@ -2,7 +2,7 @@ package com.serveone.mama.signal;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.serveone.mama.dart.DisclosureItem;
+import com.serveone.mama.dart.entity.DisclosureEntity;
 import com.serveone.mama.llm.OpenAiClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,26 +33,26 @@ public class SignalGenerator {
         this.mapper = mapper;
     }
 
-    public Signal generate(DisclosureItem item) {
-        if (item.stockCode() == null || item.stockCode().isBlank()) {
-            throw new IllegalArgumentException("disclosure has no stock code: rceptNo=" + item.rceptNo());
+    public Signal generate(DisclosureEntity entity) {
+        if (entity.stockCode() == null || entity.stockCode().isBlank()) {
+            throw new IllegalArgumentException("disclosure has no stock code: rceptNo=" + entity.rceptNo());
         }
-        String text = openAi.completeJson(SYSTEM_PROMPT, buildUserPrompt(item), MAX_TOKENS);
-        return parse(text, item.stockCode());
+        String text = openAi.completeJson(SYSTEM_PROMPT, buildUserPrompt(entity), MAX_TOKENS);
+        return parse(text, entity.stockCode());
     }
 
-    private String buildUserPrompt(DisclosureItem item) {
+    private String buildUserPrompt(DisclosureEntity entity) {
         return """
                 회사: %s (%s)
                 공시명: %s
                 접수일: %s
                 신고자: %s
                 """.formatted(
-                item.corpName(),
-                item.stockCode(),
-                item.reportNm(),
-                item.rceptDt(),
-                item.flrNm()
+                entity.corpName(),
+                entity.stockCode(),
+                entity.reportNm(),
+                entity.rceptDt(),
+                entity.flrNm()
         );
     }
 

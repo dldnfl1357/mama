@@ -2,10 +2,13 @@ package com.serveone.mama.signal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.serveone.mama.dart.DisclosureItem;
+import com.serveone.mama.dart.entity.DisclosureEntity;
 import com.serveone.mama.llm.OpenAiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,10 +29,11 @@ class SignalGeneratorTests {
         generator = new SignalGenerator(openAi, new ObjectMapper());
     }
 
-    private static DisclosureItem item() {
-        return new DisclosureItem(
+    private static DisclosureEntity entity() {
+        return DisclosureEntity.of(new DisclosureItem(
                 "00126380", "삼성전자", "005930", "Y",
-                "주요사항보고서", "20260601000001", "삼성전자", "20260601", null);
+                "주요사항보고서", "20260601000001", "삼성전자", "20260601", null
+        ), Instant.parse("2026-06-01T07:00:00Z"));
     }
 
     @Test
@@ -38,7 +42,7 @@ class SignalGeneratorTests {
                 {"ticker":"005930","action":"BUY","confidence":0.72,"reasoning":"호재성 공시"}
                 """);
 
-        Signal signal = generator.generate(item());
+        Signal signal = generator.generate(entity());
 
         assertThat(signal.ticker()).isEqualTo("005930");
         assertThat(signal.action()).isEqualTo(Action.BUY);
@@ -55,7 +59,7 @@ class SignalGeneratorTests {
                 ```
                 """);
 
-        Signal signal = generator.generate(item());
+        Signal signal = generator.generate(entity());
 
         assertThat(signal.action()).isEqualTo(Action.SELL);
         assertThat(signal.confidence()).isEqualTo(0.4);
@@ -66,7 +70,7 @@ class SignalGeneratorTests {
         when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"BUY\",\"confidence\":2.5,\"reasoning\":\"x\"}");
 
-        Signal signal = generator.generate(item());
+        Signal signal = generator.generate(entity());
 
         assertThat(signal.confidence()).isEqualTo(1.0);
     }
@@ -76,7 +80,7 @@ class SignalGeneratorTests {
         when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"STRONG_BUY\",\"confidence\":0.9,\"reasoning\":\"x\"}");
 
-        Signal signal = generator.generate(item());
+        Signal signal = generator.generate(entity());
 
         assertThat(signal.action()).isEqualTo(Action.HOLD);
     }
@@ -85,7 +89,7 @@ class SignalGeneratorTests {
     void generate_malformedOutputFallsBackToHold() {
         when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn("이건 JSON 아님");
 
-        Signal signal = generator.generate(item());
+        Signal signal = generator.generate(entity());
 
         assertThat(signal.action()).isEqualTo(Action.HOLD);
         assertThat(signal.confidence()).isZero();
@@ -98,7 +102,7 @@ class SignalGeneratorTests {
         when(openAi.completeJson(anyString(), anyString(), anyInt())).thenReturn(
                 "{\"ticker\":\"005930\",\"action\":\"HOLD\",\"confidence\":0.1,\"reasoning\":\"x\"}");
 
-        generator.generate(item());
+        generator.generate(entity());
 
         ArgumentCaptor<String> userPrompt = ArgumentCaptor.forClass(String.class);
         verify(openAi).completeJson(anyString(), userPrompt.capture(), anyInt());
@@ -106,14 +110,15 @@ class SignalGeneratorTests {
                 .contains("삼성전자")
                 .contains("005930")
                 .contains("주요사항보고서")
-                .contains("20260601");
+                .contains("2026-06-01");
     }
 
     @Test
     void generate_rejectsDisclosureWithoutStockCode() {
-        DisclosureItem unlisted = new DisclosureItem(
+        DisclosureEntity unlisted = DisclosureEntity.of(new DisclosureItem(
                 "00100000", "비상장사", null, "N",
-                "감사보고서", "20260601000002", "이사회", "20260601", null);
+                "감사보고서", "20260601000002", "이사회", "20260601", null
+        ), Instant.parse("2026-06-01T07:00:00Z"));
 
         assertThatThrownBy(() -> generator.generate(unlisted))
                 .isInstanceOf(IllegalArgumentException.class)
