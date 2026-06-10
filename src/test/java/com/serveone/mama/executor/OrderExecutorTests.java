@@ -1,11 +1,14 @@
 package com.serveone.mama.executor;
 
+import com.serveone.mama.config.MamaProperties;
 import com.serveone.mama.kis.KisClient;
 import com.serveone.mama.kis.OrderResponse;
 import com.serveone.mama.signal.Action;
 import com.serveone.mama.signal.Signal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -22,7 +25,15 @@ class OrderExecutorTests {
     @BeforeEach
     void setUp() {
         kis = mock(KisClient.class);
-        executor = new OrderExecutor(kis);
+        MamaProperties props = new MamaProperties(
+                new MamaProperties.Kis("k", "s", "0-0", true, "https://x", "https://y", null),
+                new MamaProperties.Dart("k", "https://x"),
+                new MamaProperties.OpenAi("k", "gpt-4o-mini"),
+                new MamaProperties.Watchlist(List.of()),
+                new MamaProperties.Executor(0.01, 0.6),
+                new MamaProperties.Pipeline("0 0 16 * * MON-FRI", "0 5 9 * * MON-FRI", 0L)
+        );
+        executor = new OrderExecutor(kis, props);
     }
 
     private static OrderResponse okWithOdno(String odno) {
@@ -80,7 +91,7 @@ class OrderExecutorTests {
         when(kis.placeMarketBuy("005930", 1)).thenReturn(okWithOdno("ORD-3"));
 
         OrderExecutor.ExecutionResult result = executor.execute(
-                new Signal("005930", Action.BUY, OrderExecutor.MIN_CONFIDENCE, "x"), 1);
+                new Signal("005930", Action.BUY, 0.6, "x"), 1);
 
         assertThat(result.executed()).isTrue();
     }

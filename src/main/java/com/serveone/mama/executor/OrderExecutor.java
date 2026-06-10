@@ -1,5 +1,6 @@
 package com.serveone.mama.executor;
 
+import com.serveone.mama.config.MamaProperties;
 import com.serveone.mama.kis.KisClient;
 import com.serveone.mama.kis.OrderResponse;
 import com.serveone.mama.signal.Action;
@@ -11,21 +12,21 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderExecutor {
 
-    static final double MIN_CONFIDENCE = 0.6;
-
     private final KisClient kis;
+    private final double minConfidence;
 
-    public OrderExecutor(KisClient kis) {
+    public OrderExecutor(KisClient kis, MamaProperties properties) {
         this.kis = kis;
+        this.minConfidence = properties.executor().minConfidence();
     }
 
     public ExecutionResult execute(Signal signal, int qty) {
         if (signal.action() == Action.HOLD) {
             return ExecutionResult.skipped("HOLD");
         }
-        if (signal.confidence() < MIN_CONFIDENCE) {
+        if (signal.confidence() < minConfidence) {
             return ExecutionResult.skipped(
-                    "confidence " + signal.confidence() + " < " + MIN_CONFIDENCE);
+                    "confidence " + signal.confidence() + " < " + minConfidence);
         }
         OrderResponse response = switch (signal.action()) {
             case BUY -> kis.placeMarketBuy(signal.ticker(), qty);
