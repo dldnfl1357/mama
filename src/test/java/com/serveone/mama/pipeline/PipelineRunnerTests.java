@@ -6,7 +6,9 @@ import com.serveone.mama.dart.DisclosureIngestService;
 import com.serveone.mama.dart.DisclosureItem;
 import com.serveone.mama.dart.IngestPage;
 import com.serveone.mama.dart.entity.DisclosureEntity;
+import com.serveone.mama.kis.BalanceResponse;
 import com.serveone.mama.kis.KisClient;
+import com.serveone.mama.kis.QuoteResponse;
 import com.serveone.mama.llm.OpenAiClientException;
 import com.serveone.mama.signal.Action;
 import com.serveone.mama.signal.Signal;
@@ -182,6 +184,149 @@ class PipelineRunnerTests {
 
             verify(generator, never()).generate(any());
             verify(signalRepo, never()).save(any());
+        }
+    }
+
+    @Nested
+    class ExecutionPhase {
+
+        private SignalEntity buySignal(String rceptNo, String ticker, double confidence) {
+            return SignalEntity.success(rceptNo, new Signal(ticker, Action.BUY, confidence, "x"), FIXED);
+        }
+
+        private SignalEntity sellSignal(String rceptNo, String ticker, double confidence) {
+            return SignalEntity.success(rceptNo, new Signal(ticker, Action.SELL, confidence, "x"), FIXED);
+        }
+
+        private void stubBalance(long deposit, java.util.Map<String, Integer> holdings) {
+            BalanceResponse balance = mock(BalanceResponse.class);
+            when(balance.deposit()).thenReturn(deposit);
+            when(balance.holdingsByTicker()).thenReturn(holdings);
+            when(kisClient.inquireBalance()).thenReturn(balance);
+        }
+
+        private void stubQuote(String ticker, long price) {
+            QuoteResponse quote = mock(QuoteResponse.class);
+            when(quote.currentPrice()).thenReturn(price);
+            when(kisClient.inquireQuote(ticker)).thenReturn(quote);
+        }
+
+        @Test
+        void emptyPendingShortCircuitsToZeroResult() {
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of());
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.pending()).isZero();
+            assertThat(result.winners()).isZero();
+            verify(kisClient, never()).inquireBalance();
+        }
+
+        @Test
+        void groupsByTickerKeepingHighestConfidenceAndMarksOthersSuperseded() {
+            SignalEntity low = buySignal("rc-low", "005930", 0.7);
+            SignalEntity high = buySignal("rc-high", "005930", 0.9);
+            SignalEntity other = buySignal("rc-other", "035720", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(low, high, other));
+            stubBalance(10_000_000L, java.util.Map.of());
+            stubQuote("005930", 50_000L);
+            stubQuote("035720", 100_000L);
+            when(kisClient.placeMarketBuy(any(), org.mockito.ArgumentMatchers.anyInt()))
+                    .thenReturn(new com.serveone.mama.kis.OrderResponse(
+                            "0", "X", "ok", new com.serveone.mama.kis.OrderResponse.Output("o", "ODNO", "0900")));
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.pending()).isEqualTo(3);
+            assertThat(result.winners()).isEqualTo(2);
+            assertThat(low.errorMessage()).isEqualTo("superseded by rc-high");
+            assertThat(low.executedAt()).isNotNull();
+        }
+
+        @Test
+        void buyWithZeroTargetQtyIsMarkedFailed() {
+            SignalEntity buy = buySignal("rc1", "005930", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(buy));
+            // cash=1000, fraction=0.01, price=50000 → target = floor(10 / 50000) = 0
+            stubBalance(1_000L, java.util.Map.of());
+            stubQuote("005930", 50_000L);
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.skipped()).isEqualTo(1);
+            assertThat(buy.errorMessage()).contains("qty=0");
+            verify(kisClient, never()).placeMarketBuy(any(), org.mockito.ArgumentMatchers.anyInt());
+        }
+
+        @Test
+        void sellWithNoHoldingIsMarkedFailed() {
+            SignalEntity sell = sellSignal("rc1", "005930", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(sell));
+            stubBalance(10_000_000L, java.util.Map.of());
+            stubQuote("005930", 50_000L);
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.skipped()).isEqualTo(1);
+            assertThat(sell.errorMessage()).contains("no position");
+            verify(kisClient, never()).placeMarketSell(any(), org.mockito.ArgumentMatchers.anyInt());
+        }
+
+        @Test
+        void buyPlacesMarketOrderAndMarksExecuted() {
+            SignalEntity buy = buySignal("rc1", "005930", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(buy));
+            // cash=10M, fraction=0.01, price=50000 → target = 2
+            stubBalance(10_000_000L, java.util.Map.of());
+            stubQuote("005930", 50_000L);
+            when(kisClient.placeMarketBuy("005930", 2)).thenReturn(
+                    new com.serveone.mama.kis.OrderResponse(
+                            "0", "X", "ok",
+                            new com.serveone.mama.kis.OrderResponse.Output("o", "ODNO-1", "0900")));
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.executed()).isEqualTo(1);
+            assertThat(buy.orderNo()).isEqualTo("ODNO-1");
+            assertThat(buy.executedQty()).isEqualTo(2);
+            assertThat(buy.executedAt()).isNotNull();
+            verify(kisClient).placeMarketBuy("005930", 2);
+        }
+
+        @Test
+        void kisExceptionOnOrderIsRetriedOnceThenMarkedFailed() {
+            SignalEntity buy = buySignal("rc1", "005930", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(buy));
+            stubBalance(10_000_000L, java.util.Map.of());
+            stubQuote("005930", 50_000L);
+            when(kisClient.placeMarketBuy("005930", 2))
+                    .thenThrow(new com.serveone.mama.kis.KisException("transient"))
+                    .thenThrow(new com.serveone.mama.kis.KisException("still bad"));
+
+            ExecutionPhaseResult result = runner(new MamaProperties.Watchlist(List.of()))
+                    .runExecutionPhase();
+
+            assertThat(result.failed()).isEqualTo(1);
+            assertThat(buy.errorMessage()).contains("still bad");
+            verify(kisClient, times(2)).placeMarketBuy("005930", 2);
+        }
+
+        @Test
+        void inquireBalanceFailureAbortsPhase() {
+            SignalEntity buy = buySignal("rc1", "005930", 0.8);
+            when(signalRepo.findExecutable(0.6)).thenReturn(List.of(buy));
+            when(kisClient.inquireBalance())
+                    .thenThrow(new com.serveone.mama.kis.KisException("balance down"));
+
+            assertThatThrownBy(() -> runner(new MamaProperties.Watchlist(List.of())).runExecutionPhase())
+                    .isInstanceOf(com.serveone.mama.kis.KisException.class);
+
+            verify(kisClient, never()).placeMarketBuy(any(), org.mockito.ArgumentMatchers.anyInt());
         }
     }
 }
