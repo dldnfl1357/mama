@@ -2,7 +2,7 @@
 
 지금 무엇이 열려있는가만 한눈에 보는 평면 리스트. 결정·근거의 narrative 는 `WORKLOG.md`에.
 
-업데이트: 2026-06-05 (W4 5/12 진행 — 중단, 다음 세션 Task 6 부터 재개)
+업데이트: 2026-06-11 (W4 12/12 완료 — 파이프라인 코드 마무리, 운영 가동 대기)
 
 ---
 
@@ -15,26 +15,6 @@
 - [ ] 신규 인증은 `gh auth login --web -h github.com`만 사용 (PAT 채팅 노출 방지)
 - [ ] 셸 history에서 토큰 라인 제거 (`~/.zsh_history`)
 - [x] ~~`JAVA_HOME=...` 영구화~~ — Windows 머신은 Gradle toolchain 자동, 불필요
-
-## 🟡 진행 중 — W4 파이프라인 (5/12 완료)
-
-스펙: `docs/superpowers/specs/2026-06-05-w4-pipeline-design.md` (커밋 `73d6662`)
-플랜: `docs/superpowers/plans/2026-06-05-w4-pipeline.md` (커밋 `7f1f577`)
-실행 방식: subagent-driven-development. 구현자/spec/quality 3-에이전트 루프.
-재개 base SHA: `6f914d0`
-
-- [x] Task 1 — KIS typed responses (`QuoteResponse`, `BalanceResponse`) — `d42fdf7` + fix `7cc297a`
-- [x] Task 2 — `SignalEntity` + `SignalRepository.findExecutable` — `47d3b77`
-- [x] Task 3 — `DisclosureIngestService` → `IngestPage` — `3fe39fc` (doc'd deviation: `totalPage=0 → 1` fallback)
-- [x] Task 4 — `SignalGenerator(DisclosureEntity)` — `28b4e0f`
-- [x] Task 5 — `MamaProperties.Watchlist/Executor/Pipeline` + yml + 4 test sites — `6f914d0`
-- [ ] **Task 6** — `OrderExecutor` `min-confidence` 외부화 (`MamaProperties.Executor`)
-- [ ] **Task 7** — `pipeline/RetryHelper` + 4 단위 테스트
-- [ ] **Task 8** — `PipelineRunner.runSignalPhase` (Phase A) + `SignalPhaseResult` + 6 테스트
-- [ ] **Task 9** — `PipelineRunner.runExecutionPhase` (Phase B) + `ExecutionPhaseResult` + 7 테스트
-- [ ] **Task 10** — `PipelineScheduler` + `MamaApplication`의 `@EnableScheduling`
-- [ ] **Task 11** — `PipelineCliRunner` (`--phase=signal|execute`)
-- [ ] **Task 12** — `./gradlew clean build` 그린 + bootRun signal DDL 확인 + WORKLOG/CHECKLIST 최종 갱신
 
 ## 🟡 운영 측 다음 (W4 마무리 후)
 
@@ -63,6 +43,12 @@
 - [x] **W3**: KIS 인증 (`KisTokenManager` 메모리 + 디스크 영속화) + 주문 (`KisClient` 시장가/지정가/정정/취소) + `OrderExecutor`
 - [x] **W3 스모크**: 토큰/시세/잔고 24/7 정상 / 주문은 운영시간 09:00–18:00 KST 한정 (`EGW00202` 함정 기록됨)
 - [x] **W4 설계 + 플랜** (`73d6662`, `7f1f577`)
-- [x] **W4 Task 1~5/12 구현** (위 진행 중 섹션 참조)
+- [x] **W4**: 파이프라인 결합 12/12 완료 (2026-06-11)
+  - Task 1~7: `d42fdf7`+`7cc297a`, `47d3b77`, `3fe39fc`, `28b4e0f`, `6f914d0`, `2d90a0c`, `fe8c761`
+  - Task 8 — `PipelineRunner.runSignalPhase` (Phase A) + 6 테스트 — `ce2bdfb`
+  - Task 9 — `PipelineRunner.runExecutionPhase` (Phase B) + 7 테스트 — `e48fbaf`
+  - Task 10 — `PipelineScheduler` + `@EnableScheduling` — `de80399`
+  - Task 11 — `PipelineCliRunner` (`--phase=signal|execute`) — `21e8403`
+  - Task 12 — `clean build` 그린 + bootRun `signal` DDL 확인 + 문서 갱신
 - [x] `CLAUDE.md` 단일 backend 워크스페이스로 재정의
 - [x] SQLite + JPA + community-dialects 통합

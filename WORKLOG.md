@@ -442,6 +442,81 @@ TDD 단계별로 분해. 각 task = 1 commit. 진행은 subagent-driven-developm
 
 ---
 
+## 2026-06-10 — W4 재개 (Task 6 완료, Task 7 부분 완료)
+
+### 진행
+
+5/12 에서 끊겼던 W4 플랜을 subagent-driven-development 로 재개. base SHA `6f914d0`.
+
+| Task | 커밋 | 모델 | 핵심 변경 |
+|---|---|---|---|
+| 6 | `2d90a0c` | implementer/spec/quality 모두 haiku | `OrderExecutor.MIN_CONFIDENCE` 정적 상수 제거 → `MamaProperties.Executor.minConfidence` 생성자 주입. `OrderExecutor(KisClient, MamaProperties)` 시그니처 변경. 테스트 `setUp()` 6-arg `MamaProperties` 빌드 + 임계값 테스트의 `OrderExecutor.MIN_CONFIDENCE` → 리터럴 `0.6` 으로 교체. 5개 기존 테스트 그대로 통과. |
+| 7 | `fe8c761` | implementer haiku | `pipeline/RetryHelper.withRetry(Supplier, Class, Duration)` 정적 유틸 + 4 단위 테스트 (성공 즉시 / 1회 재시도 후 성공 / 비매칭 예외는 재시도 안 함 / 둘 다 실패 시 두 번째 예외 전파). `pipeline` 패키지 신설. |
+
+### 함정 / 검증 한계 — Task 7
+
+구현자(haiku) 가 `./gradlew test --tests "...RetryHelperTests"` 를 실행하다 Gradle 데몬이 hung 상태로 멈춤. 구현자가 `compileJava`/`compileTestJava` 만 성공 확인하고 **테스트 실행 없이 "manual trace" 만으로 DONE 보고**. 컨트롤러가 이를 거부하고 데몬 강제 종료 + 자체 `./gradlew test` 백그라운드 재실행 — 세션 중단 시점에 검증 진행 중이라 Task 7 의 **테스트 그린 확정은 다음 세션 첫 작업**으로 미룸.
+
+**판단:** Task 7 구현 자체는 spec 과 정확히 일치. 코드 변경량 32+77 라인, 컴파일 통과. 로직은 단순(`try`/`catch isInstance`/`sleep`/`retry`). 위험도 낮지만 **CLAUDE.md §3 완료 기준 #1 ("`./gradlew build` 성공")** 을 채우지 못한 상태로 Task 8 진입은 부적절. 다음 세션은 빌드 확정부터 시작.
+
+### 의사결정 — Task 6 review
+
+Code quality reviewer 가 `OrderExecutorTests` 의 임계값 테스트에서 리터럴 `0.6` 을 명명 상수(`MIN_CONFIDENCE_THRESHOLD`) 로 추출하라고 "Important" 권고. **거부**. 플랜이 명시적으로 "Replace that constant with the literal value `0.6`" 라고 지시했고, 리뷰어 제안은 spec 에서 벗어남. [[feedback-spec-deviation]] 의 "디자인 권고는 보통 defer" 룰에 해당.
+
+### Subagent 운영 메모
+
+- 구현자/spec/quality 셋 다 haiku 로도 Task 6, 7 둘 다 cleanly 처리 — 1~2 파일 + 완전 spec 케이스의 haiku 충분성 재확인.
+- 다만 구현자 haiku 가 Gradle 데몬 hung 같은 환경 이상 상황에서 "compileTestJava 통과 = 테스트 통과" 로 자체 해석하는 경향 관찰. **앞으로 implementer prompt 의 self-review 체크리스트에 "테스트가 실제로 실행돼서 그린 결과를 출력한 것을 확인했는가" 를 명시 추가 권장**.
+
+### 다음 세션 우선 확인
+
+1. **Task 7 테스트 그린 확정** — `./gradlew test --tests "com.serveone.mama.pipeline.RetryHelperTests"` 실행, 4/4 PASS 확인. 안 되면 데몬 다시 죽이고 `--no-daemon` 으로.
+2. **Task 8 진입** — `PipelineRunner.runSignalPhase` (Phase A) + `SignalPhaseResult` + 6 nested 테스트. base SHA `fe8c761`. 다중 파일 + integration 이라 구현자 `sonnet`, 리뷰어 `haiku` 권장.
+3. **워치리스트 시드**는 여전히 빈 채. Task 12 마무리 시점에 5~10 종목 박을지 결정.
+
+### 보류 / 미해결
+
+- **GitHub PAT 폐기**: 여전히 미확인. (운영 외)
+- **Task 7 빌드 검증** (위 1번).
+
+---
+
+## 2026-06-11 — W4 완료 (Task 7 검증 + Task 8~12)
+
+### 진행
+
+지난 세션 보류였던 Task 7 빌드 검증부터 시작. `./gradlew test --tests RetryHelperTests` 4/4 PASS + 풀 빌드 그린으로 확정한 뒤, 남은 task 를 subagent-driven-development 로 완주. **W4 12/12 완료.**
+
+| Task | 커밋 | 모델 | 핵심 변경 |
+|---|---|---|---|
+| 8 | `ce2bdfb` | implementer sonnet, 리뷰어 haiku | `PipelineRunner.runSignalPhase` (Phase A: 페이지네이션 ingest → 워치리스트 필터 → `existsById` dedup → LLM 신호 + 1회 재시도 → `SignalEntity` 영속화) + `SignalPhaseResult` + 6 nested 테스트 |
+| 9 | `e48fbaf` | implementer sonnet, 리뷰어 haiku | `runExecutionPhase` (Phase B: `findExecutable` → ticker별 confidence winner + `markSuperseded` → 잔고 1회 조회 → cash-fraction 사이징 → 시장가 주문 + per-winner 재시도) + `ExecutionPhaseResult` + 7 nested 테스트 |
+| 10 | `de80399` | 전부 haiku | `PipelineScheduler` (`@Profile("!pipeline")`, 16:00 / 09:05 KST cron) + `MamaApplication` `@EnableScheduling` |
+| 11 | `21e8403` | 전부 haiku | `PipelineCliRunner` (`@Profile("pipeline")`, `--phase=signal\|execute`, exit code 반영) |
+| 12 | (docs 커밋) | 컨트롤러 직접 | `clean build` 그린 + bootRun DDL 확인 + 본 문서 갱신 |
+
+### 검증 (Task 12)
+
+- `./gradlew clean build` — BUILD SUCCESSFUL, 9 tasks 전부 실행. 테스트 컨텍스트 로그에 `signal` 테이블 create/drop 확인.
+- `bootRun` — 4.5초 기동 성공. 로컬 `data/mama.db` 에 `signal` 테이블이 풀 스키마(action enum check, executed_at/order_no/executed_qty 상태 컬럼 포함)로 존재 확인. 이전 세션 부팅에서 이미 생성돼 있어 이번 기동엔 DDL 로그 없음 — `ddl-auto=update` 정상 동작.
+
+### Spec deviation (documented) — Task 11
+
+플랜의 `PipelineCliRunner` 예시 코드는 **컴파일 불가**였음: 가변 로컬 `code` 를 `() -> code` 람다로 캡처 (effectively-final 위반). 구현자(haiku)가 `executePhase(phase) → int` 헬퍼로 재구성해 해결. Spec reviewer 가 관찰 동작(분기별 exit code / 로그 메시지 / 프로파일) 동일함을 독립 검증 → documented deviation 으로 accept. **플랜에 박은 verbatim 코드도 컴파일 검증이 안 된 상태일 수 있다** — 플랜 작성 시점에 의식할 것.
+
+### Review 운영 메모
+
+- Task 8 quality reviewer 의 "Important" 2건 (워치리스트 null 가드, 동일 타임스탬프 invariant 테스트) 은 플랜 명세 밖 advisory 라 defer. `@Validated` config 가 null 워치리스트를 막고 있어 가드는 불필요 판단.
+- Task 9~11 리뷰는 전부 클린 Approved. haiku 구현자/리뷰어 조합이 1~2파일 + 완전 spec 에서 안정적이라는 것 재확인. "테스트 실행 출력을 직접 봤는가" 체크리스트를 implementer prompt 에 박은 뒤로 컴파일-만-확인 보고 재발 없음.
+
+### 다음 (운영 가동)
+
+1. **워치리스트 시드** — `mama.watchlist.tickers` 가 여전히 빈 리스트. 5~10개 종목을 넣어야 Phase A 가 신호를 만든다.
+2. **첫 자동 실행 관찰** — 다음 평일 16:00 KST Phase A (첫 OpenAI 실호출), 익일 09:05 KST Phase B (첫 자동 주문). 수동 트리거는 `./gradlew bootRun --args="--spring.profiles.active=pipeline --phase=signal"`.
+3. **GitHub PAT 폐기** — 여전히 미확인 (운영 외).
+
+---
+
 ## 일지 작성 규칙 (셀프)
 
 - 한 작업 세션 끝나면 날짜 섹션 추가.
