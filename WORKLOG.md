@@ -509,11 +509,21 @@ Code quality reviewer 가 `OrderExecutorTests` 의 임계값 테스트에서 리
 - Task 8 quality reviewer 의 "Important" 2건 (워치리스트 null 가드, 동일 타임스탬프 invariant 테스트) 은 플랜 명세 밖 advisory 라 defer. `@Validated` config 가 null 워치리스트를 막고 있어 가드는 불필요 판단.
 - Task 9~11 리뷰는 전부 클린 Approved. haiku 구현자/리뷰어 조합이 1~2파일 + 완전 spec 에서 안정적이라는 것 재확인. "테스트 실행 출력을 직접 봤는가" 체크리스트를 implementer prompt 에 박은 뒤로 컴파일-만-확인 보고 재발 없음.
 
+### 최종 통합 리뷰 (전체 W4 범위, sonnet) — "Ready with notes"
+
+per-task 리뷰가 못 보는 통합 레벨을 별도 리뷰. 상태 머신은 airtight (모든 종료 경로가 `executedAt`/`errorMessage` 를 채워 `findExecutable` 재선택 불가), 금/월 신호 이월도 의도대로. 발견 사항:
+
+- **C1 — SELL 사이징이 BUY 공식 재사용 (사용자 결정 필요)**: `qty = min(floor(cash×fraction/price), held)`. (a) 현금 소진 상태면 target=0 → 보유 중인데도 `"no position"` markFailed — SELL 신호가 조용히 묻힘. (b) 현금이 있어도 보유 100주 중 2주만 파는 부분 청산이 됨. **이는 플랜 스펙 그대로의 구현** (`sellWithNoHoldingIsMarkedFailed` 테스트가 lock-in) — 버그가 아니라 설계 결정 사항. "SELL 신호 = 포지션 청산 (`qty = held`)" 으로 바꿀지 사용자 결정 대기. 모의투자라 금전 리스크 없음, 실계좌 전환 전 필수 결정.
+- **I1 — `@Transactional` 이 외부 HTTP 호출을 품음**: Phase B 에서 KIS 주문 성공 후 DB 저장 실패 시 롤백돼도 주문은 살아있음 (기록 누락). SQLite 단일 사용자 규모에선 수용, 관찰 항목으로.
+- **I2 — Phase B 재실행 가드 없음**: 같은 날 CLI 로 두 번 돌리면 pending 신호 중복 주문 가능. **운영 수칙: Phase B 는 장일 당 1회만.**
+- Minor: `OrderExecutor` 가 미사용 빈 (PipelineRunner 가 KisClient 직접 호출 — 삭제 후보), 잔고 조회 단일 페이지 가정, 현금 0원이면 모든 BUY 가 qty=0 skip.
+
 ### 다음 (운영 가동)
 
 1. **워치리스트 시드** — `mama.watchlist.tickers` 가 여전히 빈 리스트. 5~10개 종목을 넣어야 Phase A 가 신호를 만든다.
-2. **첫 자동 실행 관찰** — 다음 평일 16:00 KST Phase A (첫 OpenAI 실호출), 익일 09:05 KST Phase B (첫 자동 주문). 수동 트리거는 `./gradlew bootRun --args="--spring.profiles.active=pipeline --phase=signal"`.
-3. **GitHub PAT 폐기** — 여전히 미확인 (운영 외).
+2. **SELL 사이징 정책 결정 (C1)** — 청산형(`qty=held`) vs 현행 cash-fraction 부분 매도. 실계좌 전환 전 필수.
+3. **첫 자동 실행 관찰** — 다음 평일 16:00 KST Phase A (첫 OpenAI 실호출), 익일 09:05 KST Phase B (첫 자동 주문). 수동 트리거는 `./gradlew bootRun --args="--spring.profiles.active=pipeline --phase=signal"`. Phase B 는 장일 당 1회만.
+4. **GitHub PAT 폐기** — 여전히 미확인 (운영 외).
 
 ---
 
